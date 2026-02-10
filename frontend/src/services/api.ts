@@ -29,6 +29,19 @@ export const queryService = {
     return response.data;
   },
 
+  // Get fields for all tables (convenience)
+  getAllFields: async (): Promise<FieldsResponse> => {
+    const response = await api.get<FieldsResponse>('/metadata/fields');
+    return response.data;
+  },
+
+  // Get fields for a specific table by name
+  getFieldsByTable: async (tableName: string): Promise<any> => {
+    const all = await api.get<FieldsResponse>('/metadata/fields');
+    const table = all.data.tables.find((t) => t.name === tableName);
+    return table || { name: tableName, label: tableName, fields: [] };
+  },
+
   // Execute a query
   executeQuery: async (request: QueryExecuteRequest): Promise<QueryExecuteResponse> => {
     const response = await api.post<QueryExecuteResponse>('/queries/execute', request);

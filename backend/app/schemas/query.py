@@ -9,6 +9,10 @@ class QueryRule(BaseModel):
     field: str
     operator: str
     value: Any
+    # Optional subquery structure to support nested queries for IN/NOT IN
+    subquery: Optional[Dict[str, Any]] = None
+    # When subquery returns a single column, specify which field to select
+    select_field: Optional[str] = None
     
     
 class QueryGroup(BaseModel):

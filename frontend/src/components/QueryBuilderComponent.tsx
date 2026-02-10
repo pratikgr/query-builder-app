@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { QueryBuilder as RQB, RuleGroupType, Field, formatQuery } from 'react-querybuilder';
 import 'react-querybuilder/dist/query-builder.css';
 import { queryService } from '../services/api';
 import { TableMetadata, QueryExecuteResponse } from '../types';
 import './QueryBuilderComponent.css';
+import SavedQueries from './SavedQueries';
+import InlineSubqueryEditor from './InlineSubqueryEditor';
 
 const QueryBuilderComponent: React.FC = () => {
   const [query, setQuery] = useState<RuleGroupType>({
@@ -27,11 +29,6 @@ const QueryBuilderComponent: React.FC = () => {
     loadFields();
   }, []);
 
-  // Update fields when table changes
-  useEffect(() => {
-    updateFieldsForTable();
-  }, [selectedTable, tables]);
-
   const loadFields = async () => {
     try {
       const data = await queryService.getFields();
@@ -45,18 +42,82 @@ const QueryBuilderComponent: React.FC = () => {
     }
   };
 
-  const updateFieldsForTable = () => {
+  const updateFieldsForTable = useCallback(() => {
     const table = tables.find((t) => t.name === selectedTable);
     if (table) {
-      // setFields(table.fields);
-      const mappedFields = table.fields.map((field) => ({
-        ...field,
-        operators: field.operators
-          ? field.operators.map((op) => ({name: op, label: op}))
-          : undefined,
-      }));
+      const mappedFields = table.fields.map((field) => {
+        const ops: string[] = Array.isArray((field as any).operators) ? [...((field as any).operators)] : [];
+        if (!ops.includes('in')) ops.push('in');
+        if (!ops.includes('notIn')) ops.push('notIn');
+
+        const mappedOps = ops.map((op) => {
+          if (op === 'in') return { name: 'in', label: 'IN (subquery/list)' } as any;
+          if (op === 'notIn') return { name: 'notIn', label: 'NOT IN (subquery/list)' } as any;
+          return { name: op, label: op } as any;
+        });
+
+        return { ...field, operators: mappedOps } as any;
+      });
       setFields(mappedFields as any);
     }
+  }, [selectedTable, tables]);
+
+  const loadFieldsForTable = useCallback(async (tableName: string) => {
+    try {
+      const table = await queryService.getFieldsByTable(tableName);
+      if (table && table.fields) {
+        const mappedFields = table.fields.map((field: any) => {
+          const ops: string[] = Array.isArray(field.operators) ? [...field.operators] : [];
+          if (!ops.includes('in')) ops.push('in');
+          if (!ops.includes('notIn')) ops.push('notIn');
+
+          const mappedOps = ops.map((op) => {
+            if (op === 'in') return { name: 'in', label: 'IN (subquery/list)' } as any;
+            if (op === 'notIn') return { name: 'notIn', label: 'NOT IN (subquery/list)' } as any;
+            return { name: op, label: op } as any;
+          });
+
+          return { ...field, operators: mappedOps } as any;
+        });
+
+        setFields(mappedFields as any);
+      }
+    } catch (err) {
+      console.error('Failed to load table fields', err);
+    }
+  }, []);
+
+  // Update fields when table changes (declared after helpers)
+  useEffect(() => {
+    updateFieldsForTable();
+    // also fetch fresh table fields from API for selected table
+    loadFieldsForTable(selectedTable);
+  }, [selectedTable, tables, updateFieldsForTable, loadFieldsForTable]);
+
+  // Custom value editor to open modal for IN/NOT IN subqueries
+  const CustomValueEditor = (props: any) => {
+    const { value, handleOnChange, operator, rule } = props;
+
+    if (operator === 'in' || operator === 'notIn') {
+      // support subquery stored either in rule.value or rule.subquery
+      const existing = value && typeof value === 'object' ? value : (rule && rule.subquery ? rule.subquery : undefined);
+      const val = existing || {};
+
+      return (
+        <div style={{ width: '100%', minWidth: 300 }}>
+          <InlineSubqueryEditor
+            value={val}
+            onChange={handleOnChange}
+            tables={tables}
+          />
+        </div>
+      );
+    }
+
+    // default
+    return (
+      <input type="text" value={value ?? ''} onChange={(e) => handleOnChange(e.target.value)} />
+    );
   };
 
   const handleExecuteQuery = async () => {
@@ -183,7 +244,23 @@ const QueryBuilderComponent: React.FC = () => {
       </div>
 
       <div className="query-builder-wrapper">
-        <RQB fields={fields} query={query} onQueryChange={setQuery} />
+        <RQB fields={fields} query={query} onQueryChange={setQuery} controlElements={{ valueEditor: CustomValueEditor as any }} />
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <SavedQueries onLoadQuery={(q) => {
+          try {
+            const parsed = JSON.parse(q.query_json);
+            setSelectedTable(q.table_name);
+            setQuery(parsed as any);
+            setSqlQuery(q.sql_query || '');
+            // ensure fields are loaded for the table
+            loadFieldsForTable(q.table_name);
+          } catch (err) {
+            alert('Failed to load saved query');
+            console.error(err);
+          }
+        }} />
       </div>
 
       {sqlQuery && (

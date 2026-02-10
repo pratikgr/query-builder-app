@@ -25,6 +25,13 @@ export interface QueryRule {
   field: string;
   operator: string;
   value: any;
+  subquery?: {
+    query: QueryGroup;
+    table_name: string;
+    select_field?: string;
+    select_fields?: string[];
+  } | any;
+  select_field?: string;
 }
 
 export interface QueryGroup {
