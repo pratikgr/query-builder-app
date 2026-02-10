@@ -48,7 +48,14 @@ const QueryBuilderComponent: React.FC = () => {
   const updateFieldsForTable = () => {
     const table = tables.find((t) => t.name === selectedTable);
     if (table) {
-      setFields(table.fields);
+      // setFields(table.fields);
+      const mappedFields = table.fields.map((field) => ({
+        ...field,
+        operators: field.operators
+          ? field.operators.map((op) => ({name: op, label: op}))
+          : undefined,
+      }));
+      setFields(mappedFields as any);
     }
   };
 
